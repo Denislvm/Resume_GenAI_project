@@ -1,10 +1,8 @@
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core import VectorStoreIndex
 
-def generate_summary(index: VectorStoreIndex, resume_text: str, n_results: int = 1):
-    """
-    Generates a summary of strongest skills & professional highlights for a specific resume.
-    """
+def generate_summary(index: VectorStoreIndex, resume_text: str, n_results: int = 3):
+    """Generates a summary of strongest skills & professional highlights."""
     retriever = index.as_retriever(similarity_top_k=n_results)
     query_engine = RetrieverQueryEngine.from_args(retriever)
 
@@ -14,5 +12,8 @@ def generate_summary(index: VectorStoreIndex, resume_text: str, n_results: int =
     Resume: {resume_text}
     """
 
-    response = query_engine.query(summary_prompt)
-    return response.response
+    try:
+        response = query_engine.query(summary_prompt)
+        return response.response
+    except Exception:
+        return "Summary generation failed. Ensure an LLM is configured."
