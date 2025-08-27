@@ -1,21 +1,19 @@
-import chromadb
-from transformers import pipeline
+from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core import VectorStoreIndex
 
-def generate_summary(query: str, db_path="chromadb_data", collection_name="resume_collection"):
-    client = chromadb.PersistentClient(path=db_path)
-    collection = client.get_or_create_collection(name=collection_name)
+def generate_summary(index: VectorStoreIndex, resume_text: str, n_results: int = 3):
+    """Generates a summary of strongest skills & professional highlights."""
+    retriever = index.as_retriever(similarity_top_k=n_results)
+    query_engine = RetrieverQueryEngine.from_args(retriever)
 
-    results = collection.query(
-        query_texts=[query],
-        n_results=3
-    )
+    summary_prompt = f"""
+    Based on the following resume text, summarize the candidate's strongest technical skills, professional highlights,
+    and key achievements. Write in 4-5 sentences, professional tone.
+    Resume: {resume_text}
+    """
 
-    summarizer = pipeline("summarization", model="google/flan-t5-small")
-
-    summaries = []
-    for doc in results["documents"][0]:
-        text = doc[:500]
-        summary = summarizer(text, max_length=100, min_length=20, do_sample=False)
-        summaries.append(summary[0]["summary_text"])
-
-    return summaries
+    try:
+        response = query_engine.query(summary_prompt)
+        return response.response
+    except Exception:
+        return "Summary generation failed. Ensure an LLM is configured."
