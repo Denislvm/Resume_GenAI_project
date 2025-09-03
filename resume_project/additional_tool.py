@@ -1,6 +1,6 @@
 """
-Additional Tools for ReAct Agent Enhancement
-Contains: General Knowledge Tool (using OpenAI) and Toolbox Integration
+Interactive Terminal Interface for Additional Tools
+User can ask any questions they want through terminal input
 """
 
 import json
@@ -26,8 +26,8 @@ Settings.llm = OpenAI(
     max_tokens=1024,
 )
 
-class AdditionalTools:
-    """Container for additional tools to enhance the ReAct agent capabilities."""
+class InteractiveToolsManager:
+    """Manager for interactive tools that respond to user terminal input."""
     
     def __init__(self, candidates_file="candidates.json"):
         """Initialize with candidate data and OpenAI LLM."""
@@ -46,17 +46,11 @@ class AdditionalTools:
             print(f"Error loading candidates: {e}")
             return []
     
-    def create_general_knowledge_tool(self) -> FunctionTool:
-        """Create a true general knowledge tool using OpenAI for any topic unrelated to resumes."""
-        
-        def general_knowledge_query(question: str) -> str:
-            """Answer general knowledge questions on any topic unrelated to resumes using OpenAI."""
-            
-            try:
-                # Create a comprehensive prompt for general knowledge
-                prompt = f"""
-You are a knowledgeable assistant that can answer questions on any general topic. 
-The user is asking about something unrelated to resumes or job applications.
+    def general_knowledge_query(self, question: str) -> str:
+        """Answer any general knowledge question using OpenAI."""
+        try:
+            prompt = f"""
+You are a knowledgeable assistant that can answer questions on any topic.
 
 Question: {question}
 
@@ -69,61 +63,17 @@ Please provide a comprehensive, accurate, and informative answer. Include:
 Keep the response informative but concise (2-4 paragraphs maximum).
 If you're not certain about specific details, acknowledge uncertainty.
 """
-                
-                response = self.llm.complete(prompt)
-                return response.text.strip()
-                
-            except Exception as e:
-                return f"I encountered an error while processing your question about '{question}': {str(e)}. Please try rephrasing your question."
-        
-        return FunctionTool.from_defaults(
-            fn=general_knowledge_query,
-            name="general_knowledge",
-            description="Answer any general knowledge questions unrelated to resumes. This includes science, history, current events, entertainment, sports, technology, culture, arts, geography, politics, or any other general topic the user wants to know about."
-        )
-    
-    def create_toolbox_integration_tool(self) -> List[FunctionTool]:
-        """Create tools using Toolbox integration (placeholder for future implementation)."""
-        tools = []
-        
-        try:
-            # This is a placeholder for Toolbox integration
-            # You would need to set up a Toolbox server first
             
-            def toolbox_search(query: str) -> str:
-                """Search using Toolbox integration (placeholder implementation)."""
-                return f"Toolbox integration for '{query}' is not yet configured. Please set up a Toolbox server and update this implementation."
-            
-            toolbox_tool = FunctionTool.from_defaults(
-                fn=toolbox_search,
-                name="toolbox_search",
-                description="Advanced search and data processing using Toolbox integration. Currently not configured."
-            )
-            
-            # Uncomment when Toolbox server is set up:
-            # from toolbox_llamaindex import ToolboxClient
-            # 
-            # async def load_toolbox_tools():
-            #     async with ToolboxClient("http://127.0.0.1:5000") as client:
-            #         return await client.aload_toolset()
-            #
-            # tools = asyncio.run(load_toolbox_tools())
-            
-            tools.append(toolbox_tool)
+            response = self.llm.complete(prompt)
+            return response.text.strip()
             
         except Exception as e:
-            print(f"Toolbox integration not available: {e}")
-            
-        return tools
+            return f"I encountered an error while processing your question: {str(e)}. Please try rephrasing your question."
     
-    def create_web_search_tool(self) -> FunctionTool:
-        """Create a web search simulation tool using OpenAI for current information."""
-        
-        def web_search_simulation(query: str) -> str:
-            """Simulate web search for current information using OpenAI's knowledge."""
-            
-            try:
-                prompt = f"""
+    def web_search_simulation(self, query: str) -> str:
+        """Simulate web search for current information using OpenAI."""
+        try:
+            prompt = f"""
 You are simulating a web search to answer current questions. The user is searching for: {query}
 
 Based on your training data, provide information as if you found it from recent web sources. Include:
@@ -138,66 +88,56 @@ Then provide 2-3 main points with explanations.
 
 If the query is about very recent events (after your knowledge cutoff), acknowledge this limitation.
 """
-                
-                response = self.llm.complete(prompt)
-                return response.text.strip()
-                
-            except Exception as e:
-                return f"Search simulation failed for '{query}': {str(e)}"
-        
-        return FunctionTool.from_defaults(
-            fn=web_search_simulation,
-            name="web_search_simulation",
-            description="Simulate web search for current information and recent topics using AI knowledge. Use when users ask for recent news, current events, or trending topics."
-        )
+            
+            response = self.llm.complete(prompt)
+            return response.text.strip()
+            
+        except Exception as e:
+            return f"Search simulation failed for '{query}': {str(e)}"
     
-    def create_candidate_statistics_tool(self) -> FunctionTool:
-        """Create a tool for candidate database statistics and analytics."""
+    def get_candidate_statistics(self) -> str:
+        """Get comprehensive statistical analysis of the candidate database."""
+        if not self.candidates:
+            return "No candidate data available. Please ensure candidates.json exists and contains data."
         
-        def get_candidate_statistics() -> str:
-            """Get comprehensive statistical analysis of the candidate database."""
-            
-            if not self.candidates:
-                return "No candidate data available. Please ensure candidates.json exists and contains data."
-            
-            total_candidates = len(self.candidates)
-            
-            # Experience analysis
-            experiences = [candidate.get('years', 0) for candidate in self.candidates]
-            avg_experience = sum(experiences) / total_candidates if experiences else 0
-            max_experience = max(experiences) if experiences else 0
-            min_experience = min(experiences) if experiences else 0
-            
-            # Experience distribution
-            experience_ranges = {
-                "Entry Level (0-2 years)": 0,
-                "Mid Level (3-5 years)": 0, 
-                "Senior Level (6-10 years)": 0,
-                "Expert Level (10+ years)": 0
-            }
-            
-            for years in experiences:
-                if years <= 2:
-                    experience_ranges["Entry Level (0-2 years)"] += 1
-                elif years <= 5:
-                    experience_ranges["Mid Level (3-5 years)"] += 1
-                elif years <= 10:
-                    experience_ranges["Senior Level (6-10 years)"] += 1
-                else:
-                    experience_ranges["Expert Level (10+ years)"] += 1
-            
-            # Profession analysis
-            professions = {}
-            for candidate in self.candidates:
-                profession = candidate.get('profession', 'Unknown')
-                professions[profession] = professions.get(profession, 0) + 1
-            
-            # Most/least experienced candidates
-            most_exp_candidate = max(self.candidates, key=lambda x: x.get('years', 0)) if self.candidates else None
-            least_exp_candidate = min(self.candidates, key=lambda x: x.get('years', 0)) if self.candidates else None
-            
-            # Build comprehensive statistics report
-            stats_report = f"""
+        total_candidates = len(self.candidates)
+        
+        # Experience analysis
+        experiences = [candidate.get('years', 0) for candidate in self.candidates]
+        avg_experience = sum(experiences) / total_candidates if experiences else 0
+        max_experience = max(experiences) if experiences else 0
+        min_experience = min(experiences) if experiences else 0
+        
+        # Experience distribution
+        experience_ranges = {
+            "Entry Level (0-2 years)": 0,
+            "Mid Level (3-5 years)": 0, 
+            "Senior Level (6-10 years)": 0,
+            "Expert Level (10+ years)": 0
+        }
+        
+        for years in experiences:
+            if years <= 2:
+                experience_ranges["Entry Level (0-2 years)"] += 1
+            elif years <= 5:
+                experience_ranges["Mid Level (3-5 years)"] += 1
+            elif years <= 10:
+                experience_ranges["Senior Level (6-10 years)"] += 1
+            else:
+                experience_ranges["Expert Level (10+ years)"] += 1
+        
+        # Profession analysis
+        professions = {}
+        for candidate in self.candidates:
+            profession = candidate.get('profession', 'Unknown')
+            professions[profession] = professions.get(profession, 0) + 1
+        
+        # Most/least experienced candidates
+        most_exp_candidate = max(self.candidates, key=lambda x: x.get('years', 0)) if self.candidates else None
+        least_exp_candidate = min(self.candidates, key=lambda x: x.get('years', 0)) if self.candidates else None
+        
+        # Build comprehensive statistics report
+        stats_report = f"""
 CANDIDATE DATABASE STATISTICS
 ============================
 
@@ -208,52 +148,42 @@ OVERVIEW:
 
 EXPERIENCE DISTRIBUTION:
 """
-            for range_name, count in experience_ranges.items():
-                percentage = (count / total_candidates * 100) if total_candidates > 0 else 0
-                stats_report += f"• {range_name}: {count} candidates ({percentage:.1f}%)\n"
-            
-            stats_report += f"\nPROFESSION BREAKDOWN:\n"
-            sorted_professions = sorted(professions.items(), key=lambda x: x[1], reverse=True)
-            for profession, count in sorted_professions:
-                percentage = (count / total_candidates * 100) if total_candidates > 0 else 0
-                stats_report += f"• {profession}: {count} candidates ({percentage:.1f}%)\n"
-            
-            if most_exp_candidate and least_exp_candidate:
-                stats_report += f"\nEXPERIENCE HIGHLIGHTS:\n"
-                stats_report += f"• Most Experienced: {most_exp_candidate.get('profession', 'Unknown')} with {most_exp_candidate.get('years', 0)} years\n"
-                stats_report += f"• Least Experienced: {least_exp_candidate.get('profession', 'Unknown')} with {least_exp_candidate.get('years', 0)} years\n"
-            
-            # Additional insights
-            stats_report += f"\nINSIGHTS:\n"
-            
-            if avg_experience > 7:
-                stats_report += "• High-experience candidate pool - good for senior positions\n"
-            elif avg_experience < 3:
-                stats_report += "• Entry-to-mid level candidate pool - good for growing teams\n"
-            else:
-                stats_report += "• Balanced experience levels across the candidate pool\n"
-            
-            if len(professions) > total_candidates * 0.7:
-                stats_report += "• Diverse professional backgrounds represented\n"
-            else:
-                stats_report += "• Concentrated expertise in specific professional areas\n"
-            
-            return stats_report.strip()
+        for range_name, count in experience_ranges.items():
+            percentage = (count / total_candidates * 100) if total_candidates > 0 else 0
+            stats_report += f"• {range_name}: {count} candidates ({percentage:.1f}%)\n"
         
-        return FunctionTool.from_defaults(
-            fn=get_candidate_statistics,
-            name="candidate_statistics",
-            description="Provide comprehensive statistical analysis of the candidate database including experience distribution, profession breakdown, and insights about the candidate pool."
-        )
+        stats_report += f"\nPROFESSION BREAKDOWN:\n"
+        sorted_professions = sorted(professions.items(), key=lambda x: x[1], reverse=True)
+        for profession, count in sorted_professions:
+            percentage = (count / total_candidates * 100) if total_candidates > 0 else 0
+            stats_report += f"• {profession}: {count} candidates ({percentage:.1f}%)\n"
+        
+        if most_exp_candidate and least_exp_candidate:
+            stats_report += f"\nEXPERIENCE HIGHLIGHTS:\n"
+            stats_report += f"• Most Experienced: {most_exp_candidate.get('profession', 'Unknown')} with {most_exp_candidate.get('years', 0)} years\n"
+            stats_report += f"• Least Experienced: {least_exp_candidate.get('profession', 'Unknown')} with {least_exp_candidate.get('years', 0)} years\n"
+        
+        # Additional insights
+        stats_report += f"\nINSIGHTS:\n"
+        
+        if avg_experience > 7:
+            stats_report += "• High-experience candidate pool - good for senior positions\n"
+        elif avg_experience < 3:
+            stats_report += "• Entry-to-mid level candidate pool - good for growing teams\n"
+        else:
+            stats_report += "• Balanced experience levels across the candidate pool\n"
+        
+        if len(professions) > total_candidates * 0.7:
+            stats_report += "• Diverse professional backgrounds represented\n"
+        else:
+            stats_report += "• Concentrated expertise in specific professional areas\n"
+        
+        return stats_report.strip()
     
-    def create_interactive_qa_tool(self) -> FunctionTool:
-        """Create an interactive Q&A tool for complex conversations."""
-        
-        def interactive_qa(user_message: str) -> str:
-            """Handle complex conversational queries and follow-up questions."""
-            
-            try:
-                prompt = f"""
+    def interactive_conversation(self, user_message: str) -> str:
+        """Handle complex conversational queries and follow-up questions."""
+        try:
+            prompt = f"""
 You are having a conversation with a user. They are asking: "{user_message}"
 
 This appears to be a conversational question that might be:
@@ -270,97 +200,131 @@ Provide a helpful, engaging response that:
 
 User message: {user_message}
 """
-                
-                response = self.llm.complete(prompt)
-                return response.text.strip()
-                
-            except Exception as e:
-                return f"I had trouble processing your message: {str(e)}. Could you please rephrase or ask in a different way?"
-        
-        return FunctionTool.from_defaults(
-            fn=interactive_qa,
-            name="interactive_conversation",
-            description="Handle complex conversational queries, follow-up questions, and general discussion topics. Use when the user's message doesn't fit other specific tools but requires a thoughtful conversational response."
-        )
+            
+            response = self.llm.complete(prompt)
+            return response.text.strip()
+            
+        except Exception as e:
+            return f"I had trouble processing your message: {str(e)}. Could you please rephrase or ask in a different way?"
     
-    def get_all_tools(self) -> List[FunctionTool]:
-        """Get all additional tools as a single list."""
-        tools = []
+    def route_question(self, user_input: str) -> str:
+        """Route user input to the most appropriate tool."""
+        user_input_lower = user_input.lower()
         
-        # Add general knowledge tool (primary)
-        tools.append(self.create_general_knowledge_tool())
+        # Check for candidate statistics requests
+        if any(phrase in user_input_lower for phrase in [
+            'statistics', 'stats', 'candidate data', 'database info', 
+            'how many candidates', 'candidate overview'
+        ]):
+            return self.get_candidate_statistics()
         
-        # Add web search simulation tool
-        tools.append(self.create_web_search_tool())
+        # Check for web search simulation requests
+        elif any(phrase in user_input_lower for phrase in [
+            'search for', 'latest', 'recent', 'current', 'news about', 
+            'what\'s happening with', 'find information about'
+        ]):
+            return self.web_search_simulation(user_input)
         
-        # Add interactive Q&A tool
-        tools.append(self.create_interactive_qa_tool())
+        # Check for general knowledge questions
+        elif any(phrase in user_input_lower for phrase in [
+            'what is', 'how does', 'tell me about', 'explain', 
+            'who was', 'when did', 'where is', 'why does'
+        ]):
+            return self.general_knowledge_query(user_input)
         
-        # Add candidate statistics tool
-        tools.append(self.create_candidate_statistics_tool())
-        
-        # Add toolbox integration (placeholder)
-        toolbox_tools = self.create_toolbox_integration_tool()
-        tools.extend(toolbox_tools)
-        
-        return tools
+        # Default to interactive conversation
+        else:
+            return self.interactive_conversation(user_input)
 
-def create_additional_tools(candidates_file="candidates.json") -> List[FunctionTool]:
-    """
-    Convenience function to create all additional tools.
+def main():
+    """Main interactive terminal interface."""
+    print("=" * 60)
+    print("INTERACTIVE AI ASSISTANT - TERMINAL INTERFACE")
+    print("=" * 60)
+    print("Ask me anything! I can help with:")
+    print("• General knowledge questions")
+    print("• Current events and information searches")
+    print("• Candidate database statistics (if available)")
+    print("• General conversation and complex questions")
+    print("\nType 'quit', 'exit', or 'q' to end the session.")
+    print("Type 'help' for more information.")
+    print("=" * 60)
     
-    Args:
-        candidates_file: Path to candidates JSON file for statistics tool
+    # Initialize tools manager
+    try:
+        tools_manager = InteractiveToolsManager()
+        print("AI Assistant initialized successfully!")
+    except Exception as e:
+        print(f"Error initializing AI Assistant: {e}")
+        return
     
-    Returns:
-        List of additional tools for the ReAct agent
-    """
-    tool_creator = AdditionalTools(candidates_file)
-    return tool_creator.get_all_tools()
+    print("\nReady for your questions!")
+    
+    while True:
+        try:
+            # Get user input
+            user_input = input("\nYour question: ").strip()
+            
+            # Handle exit commands
+            if user_input.lower() in ['quit', 'exit', 'q', 'bye']:
+                print("\nThank you for using the AI Assistant! Goodbye!")
+                break
+            
+            # Handle help command
+            if user_input.lower() == 'help':
+                help_text = """
+HELP - How to use this AI Assistant:
 
-# Example usage and testing
+TYPES OF QUESTIONS YOU CAN ASK:
+
+1. GENERAL KNOWLEDGE:
+   • "What is quantum physics?"
+   • "Tell me about the Roman Empire"
+   • "How does photosynthesis work?"
+   • "Who was Albert Einstein?"
+
+2. CURRENT EVENTS/SEARCH:
+   • "Search for latest space missions"
+   • "What's happening with climate change?"
+   • "Find information about AI developments"
+   • "Recent news about technology"
+
+3. CANDIDATE STATISTICS (if data available):
+   • "Show me candidate statistics"
+   • "How many candidates do we have?"
+   • "Give me database overview"
+
+4. CONVERSATIONAL:
+   • Any complex questions or discussions
+   • Follow-up questions
+   • Personal opinions or advice
+
+Simply type your question and press Enter!
+"""
+                print(help_text)
+                continue
+            
+            # Handle empty input
+            if not user_input:
+                print("Please enter a question or type 'help' for assistance.")
+                continue
+            
+            # Process the question
+            print("\nProcessing your question...")
+            response = tools_manager.route_question(user_input)
+            
+            # Display response
+            print("\nResponse:")
+            print("-" * 40)
+            print(response)
+            print("-" * 40)
+            
+        except KeyboardInterrupt:
+            print("\n\nSession interrupted. Goodbye!")
+            break
+        except Exception as e:
+            print(f"\nError processing your question: {e}")
+            print("Please try again or rephrase your question.")
+
 if __name__ == "__main__":
-    print("Testing Additional Tools with OpenAI...")
-    
-    # Create tools
-    tool_creator = AdditionalTools()
-    tools = tool_creator.get_all_tools()
-    
-    print(f"Created {len(tools)} additional tools:")
-    for tool in tools:
-        print(f"- {tool.metadata.name}: {tool.metadata.description}")
-    
-    # Test general knowledge tool
-    print("\n" + "="*50)
-    print("Testing General Knowledge Tool:")
-    general_tool = tool_creator.create_general_knowledge_tool()
-    
-    test_questions = [
-        "What is quantum physics?",
-        "Tell me about the Roman Empire",
-        "What are the latest developments in artificial intelligence?",
-        "How does photosynthesis work?"
-    ]
-    
-    for question in test_questions:
-        print(f"\nQ: {question}")
-        response = general_tool.fn(question)
-        print(f"A: {response}")
-        print("-" * 30)
-    
-    # Test web search simulation
-    print("\n" + "="*50)
-    print("Testing Web Search Simulation:")
-    search_tool = tool_creator.create_web_search_tool()
-    
-    search_query = "latest space exploration missions"
-    print(f"\nSearching: {search_query}")
-    search_response = search_tool.fn(search_query)
-    print(f"Results: {search_response}")
-    
-    # Test statistics tool  
-    print("\n" + "="*50)
-    print("Testing Statistics Tool:")
-    stats_tool = tool_creator.create_candidate_statistics_tool()
-    stats_response = stats_tool.fn()
-    print(stats_response)
+    main()
