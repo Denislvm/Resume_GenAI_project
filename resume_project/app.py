@@ -5,7 +5,6 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 import chromadb
 
-# Set up LlamaIndex (only embedding model needed)
 Settings.embed_model = HuggingFaceEmbedding(
     model_name="sentence-transformers/all-MiniLM-L6-v2",
     device="cpu"
@@ -33,7 +32,6 @@ candidate_options = [
 ]
 selected_candidate = st.selectbox("Select a Candidate", candidate_options)
 
-# Find the selected candidate's data
 selected_candidate_data = next(
     (c for c in candidates if f"{c['name']} - {c['profession']} ({c['years']} years experience)" == selected_candidate),
     None
@@ -42,12 +40,10 @@ selected_candidate_data = next(
 if selected_candidate_data:
     st.subheader(selected_candidate)
     
-    # Display specific information
     st.write("**Name**: " + selected_candidate_data['name'])
     st.write("**Profession**: " + selected_candidate_data['profession'])
     st.write("**Years of Experience**: " + str(selected_candidate_data['years']))
-    
-    # Display full resume text
+
     st.write("### Detailed Information (Full Resume)")
     st.text_area(
         "Resume Text",
@@ -55,9 +51,9 @@ if selected_candidate_data:
         height=300,
         key=selected_candidate_data['id']
     )
-    
-    # Display pre-generated summary
+
     st.write("### Experience Summary")
     st.write(summaries.get(selected_candidate_data['id'], "No summary available."))
 else:
     st.write("Please select a candidate to view details.")
+    

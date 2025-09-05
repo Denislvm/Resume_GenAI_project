@@ -12,14 +12,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-# Load .env file
 load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     print("Warning: OPENAI_API_KEY not found in .env file. Continuing without it.")
 os.environ["OPENAI_API_KEY"] = openai_api_key
 
-# Set up LlamaIndex
 try:
     if openai_api_key:
         Settings.llm = OpenAI(
@@ -56,10 +54,8 @@ vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 index = VectorStoreIndex.from_vector_store(vector_store=vector_store, storage_context=storage_context)
 
-# Load pre-extracted data
 candidates = json.load(open("candidates.json"))
 
-# Generate summaries
 summaries = {}
 @retry(
     stop=stop_after_attempt(3),
@@ -83,7 +79,6 @@ for candidate in candidates:
         print(f"Error generating summary for {candidate_id}: {e}")
         summaries[candidate_id] = "Error generating summary. See full resume."
 
-# Save summaries
 with open("summaries.json", "w") as f:
     json.dump(summaries, f)
 

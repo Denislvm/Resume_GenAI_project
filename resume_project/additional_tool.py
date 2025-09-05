@@ -1,14 +1,10 @@
-"""
-Interactive Terminal Interface for Additional Tools
-User can ask any questions they want through terminal input
-"""
+# Interactive Terminal Interface
 
 import json
 import os
-from typing import List, Dict, Any
+from typing import List, Dict
 from dotenv import load_dotenv
 
-from llama_index.core.tools import FunctionTool, ToolMetadata
 from llama_index.core import Settings
 from llama_index.llms.openai import OpenAI
 

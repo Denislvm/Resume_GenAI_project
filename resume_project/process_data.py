@@ -19,14 +19,12 @@ from llama_index.core.program import LLMTextCompletionProgram
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-# Load .env file
 load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise ValueError("OPENAI_API_KEY not found in .env file.")
 os.environ["OPENAI_API_KEY"] = openai_api_key
 
-# Set up LlamaIndex with OpenAI
 Settings.llm = OpenAI(
     model="gpt-3.5-turbo",
     temperature=0.1,
@@ -36,7 +34,6 @@ Settings.embed_model = HuggingFaceEmbedding(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-# Updated Pydantic model for extracted candidate info
 class CandidateInfo(BaseModel):
     name: str
     profession: str
@@ -46,29 +43,26 @@ def smart_extract_name(text, candidate_id):
     """Improved name extraction focusing on first few lines only"""
     lines = text.split('\n')
     
-    # Strategy 1: Look for name in first 5 lines only (header area)
+
     for i, line in enumerate(lines[:5]):
         line = line.strip()
-        if not line or len(line) < 3 or len(line) > 40:  # Skip very long lines
+        if not line or len(line) < 3 or len(line) > 40: 
             continue
         
-        # Check if line looks like a standalone name
         if is_standalone_name(line):
             return line.title()
-    
-    # Strategy 2: Look for "Name:" patterns in first 10 lines
+
     for line in lines[:10]:
         name_match = re.search(r'(?:Name|Full\s+Name)\s*:\s*([A-Za-z\s]+)', line, re.I)
         if name_match:
             potential_name = name_match.group(1).strip().title()
             if is_valid_name_format(potential_name):
                 return potential_name
-    
-    # Strategy 3: Extract from email (more conservative)
+
     email_match = re.search(r'\b([a-z]+)\.([a-z]+)@[a-z]+\.[a-z]+', text.lower())
     if email_match:
         first, last = email_match.groups()
-        if len(first) > 1 and len(last) > 1:  # Avoid single letter names
+        if len(first) > 1 and len(last) > 1:  
             return f"{first.capitalize()} {last.capitalize()}"
     
     return "Unknown"
@@ -77,24 +71,20 @@ def is_standalone_name(line):
     """Check if a line is likely just a person's name"""
     line = line.strip()
     
-    # Remove common prefixes
     line = re.sub(r'^(Mr\.?|Mrs\.?|Ms\.?|Dr\.?)\s*', '', line, flags=re.I)
     
     words = line.split()
     
-    # Should be 2-4 words for a typical name
     if not (2 <= len(words) <= 4):
         return False
-    
-    # Each word should be properly capitalized and contain only letters
+
     for word in words:
         if not word.isalpha() or not (word.istitle() or word.isupper()):
             return False
-        # Avoid very short or very long words
+
         if len(word) < 2 or len(word) > 15:
             return False
-    
-    # Check for job-related terms (stronger exclusions)
+
     job_terms = {
         'manager', 'engineer', 'developer', 'analyst', 'specialist', 'director',
         'coordinator', 'assistant', 'associate', 'senior', 'junior', 'lead',
@@ -120,7 +110,7 @@ def is_valid_name_format(name):
     if len(words) < 2:
         return False
     
-    # Should contain only letters and spaces
+
     if not all(c.isalpha() or c.isspace() for c in name):
         return False
     
@@ -128,9 +118,9 @@ def is_valid_name_format(name):
 
 def fallback_extract_profession(text):
     """Improved profession extraction"""
-    lines = text.split('\n')[:15]  # Focus on header area
+    lines = text.split('\n')[:15] 
     
-    # Common job title patterns
+
     title_patterns = [
         r'\b(?:Senior|Junior|Lead|Principal|Chief)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b',
         r'\b([A-Z][a-z]+\s+(?:Manager|Engineer|Developer|Analyst|Specialist|Director|Coordinator))\b',
@@ -148,7 +138,6 @@ def fallback_extract_profession(text):
                 if is_valid_profession(match):
                     return match
     
-    # Fallback to simple capitalized phrases
     for line in lines:
         words = line.strip().split()
         if len(words) == 2 and all(w.istitle() for w in words):
@@ -169,7 +158,6 @@ def is_valid_profession(profession):
 def extract_years_experience(text):
     """More accurate years of experience extraction"""
     
-    # Strategy 1: Look for explicit experience statements
     exp_patterns = [
         r'\b(\d+)\+?\s*years?\s+(?:of\s+)?(?:experience|work|professional)',
         r'(?:experience|work|professional).*?(\d+)\+?\s*years?',
@@ -183,12 +171,10 @@ def extract_years_experience(text):
         if matches:
             years = [int(match) for match in matches if match.isdigit()]
             if years:
-                return max(years)  # Take the highest mentioned years
+                return max(years)  
     
-    # Strategy 2: Calculate from employment dates
     current_year = datetime.now().year
-    
-    # Look for date ranges in format "YYYY - YYYY" or "YYYY - Present"
+
     date_ranges = re.findall(r'\b(\d{4})\s*[-–]\s*(?:(\d{4})|(?:present|current|now))\b', text, re.I)
     
     total_experience = 0
@@ -197,10 +183,9 @@ def extract_years_experience(text):
             start_year = int(start_str)
             end_year = current_year if not end_str or end_str == '' else int(end_str)
             
-            # Validate years are reasonable
             if 1990 <= start_year <= current_year and start_year <= end_year <= current_year:
                 experience = end_year - start_year
-                # Only count if it's a reasonable job duration (6 months to 40 years)
+            
                 if 0.5 <= experience <= 40:
                     total_experience += experience
         except ValueError:
@@ -209,7 +194,6 @@ def extract_years_experience(text):
     if total_experience > 0:
         return int(round(total_experience))
     
-    # Strategy 3: Look for month-year ranges (more detailed dates)
     month_year_pattern = r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})\s*[-–]\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})|(?:present|current))\b'
     month_ranges = re.findall(month_year_pattern, text, re.I)
     
@@ -232,7 +216,6 @@ csv_path = "Resume.csv"
 df = pd.read_csv(csv_path)
 df = df.sample(n=5, random_state=100)  # 5 random resumes
 
-# Convert CSV rows to LlamaIndex Documents
 documents = []
 for idx, row in df.iterrows():
     candidate_id = f"candidate_{idx}"
@@ -243,7 +226,6 @@ for idx, row in df.iterrows():
         }
     ))
 
-# Set up extraction program with improved prompt
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=10),
@@ -271,7 +253,6 @@ extract_program = LLMTextCompletionProgram.from_defaults(
     llm=Settings.llm,
 )
 
-# Process each document
 candidates = []
 full_texts = {}
 

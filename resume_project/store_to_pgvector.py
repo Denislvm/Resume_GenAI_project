@@ -4,7 +4,6 @@ import psycopg2
 from dotenv import load_dotenv
 from llama_index.embeddings.openai import OpenAIEmbedding
 
-# 1. Load env
 load_dotenv()
 embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
 
@@ -14,7 +13,6 @@ PG_PORT = int(os.getenv("PG_PORT", 5432))
 PG_USER = os.getenv("PG_USER")
 PG_PASSWORD = os.getenv("PG_PASSWORD")
 
-# 2. Load resumes
 with open("candidates.json") as f:
     candidates = json.load(f)
 with open("full_texts.json") as f:

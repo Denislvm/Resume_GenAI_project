@@ -2,3 +2,5 @@ test.py
 .env
 Pipfile
 Pipfile.lock
+resume_project/toolretrieval_vstore.py
+test_structure_proj

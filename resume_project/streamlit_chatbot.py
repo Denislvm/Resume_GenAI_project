@@ -5,7 +5,6 @@ from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
 from llama_index.llms.openai import OpenAI
 from llama_index.embeddings.openai import OpenAIEmbedding
 
-# Page configuration
 st.set_page_config(
     page_title="Custom Data Chatbot",
     page_icon="🤖",
