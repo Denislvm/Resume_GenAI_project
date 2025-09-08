@@ -1,3 +1,25 @@
+## Resume Analysis System with ReAct Agent
+
+### 🚀 Setup
+
+1. Create and activate a virtual environment:
+    ```bash
+    pipenv shell
+2. Install dependencies
+    ```bash
+    pip install -r req.txt
+3. Set up environment variables:
+Create a .env file in the root folder and add
+    ```bash
+    OPENAI_API_KEY=<your_openai_api_key>
+    PG_DATABASE=postgres
+    PG_HOST=127.0.0.1
+    PG_PORT=5432
+    PG_USER=postgres
+    PG_PASSWORD=<your_password>
+4. Make sure PostgreSQL is running and pgvector extension is enabled:
+    ```bash
+    CREATE EXTENSION IF NOT EXISTS vector;  
 ## First task
 1. download csv https://www.kaggle.com/datasets/snehaanbhawal/resume-dataset
 2. split into small chunks.
