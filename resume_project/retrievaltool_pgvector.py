@@ -1,136 +1,80 @@
 import os
+import json
 import psycopg2
-from typing import Dict, Any, List
-import asyncio
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.llms.openai import OpenAI
 from llama_index.core import Settings
+from llama_index.llms.openai import OpenAI
+from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.core.tools import FunctionTool
 from llama_index.core.agent import ReActAgent
+import re
 
-# Custom system prompt (unchanged)
-CUSTOM_REACT_PROMPT = """\
-You are a resume retrieval assistant designed to answer queries about candidates by retrieving relevant information from a database. Your goal is to provide concise, accurate responses (2-3 sentences, max 60 words per candidate) focusing on key details like name, profession, years of experience, and core strengths. Use tools to fetch candidates when needed.
+# Load environment variables
+load_dotenv()
 
-## Tools
-You have access to the following tools:
-{tool_desc}
+# Setup OpenAI
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise ValueError("OPENAI_API_KEY not found in .env file.")
+os.environ["OPENAI_API_KEY"] = openai_api_key
 
-## Instructions
-- For queries like "show me all candidates" or "list all candidates," use the `retrieve_all_candidates` tool.
-- For specific queries (e.g., "find candidates with Python skills" or "who is the best software engineer"), use the `retrieve_candidates` tool with appropriate query and top_k parameters.
-- For queries referring to the "first candidate," "second candidate," etc., use the most recently retrieved candidates if available; otherwise, fetch a candidate using `retrieve_candidates` with a generic query.
-- If no candidates are found, respond with "No relevant candidates found."
-- When listing multiple candidates, include name, profession, years of experience, and a brief summary for each.
-- Always format tool inputs as valid JSON without comments or extra spaces.
+# Configure LlamaIndex settings
+Settings.llm = OpenAI(
+    model="gpt-4o-mini",
+    temperature=0.1,
+    max_tokens=1024,
+)
+Settings.embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
 
-## Output Format
-To use a tool, provide:
-Be helpful, accurate, and concise. Use tools appropriately to retrieve candidate information.
-"""
+# Database configuration
+PG_DATABASE = os.getenv("PG_DATABASE")
+PG_HOST = os.getenv("PG_HOST", "127.0.0.1")
+PG_PORT = int(os.getenv("PG_PORT", 5432))
+PG_USER = os.getenv("PG_USER")
+PG_PASSWORD = os.getenv("PG_PASSWORD")
 
 class ResumeRetrievalTool:
+    """Enhanced retrieval tool for resume database queries."""
     def __init__(self):
-        """Initialize the resume retrieval tool with database connection and models."""
+        self.embed_model = Settings.embed_model
+        self.connection_params = {
+            'dbname': PG_DATABASE,
+            'user': PG_USER,
+            'password': PG_PASSWORD,
+            'host': PG_HOST,
+            'port': PG_PORT
+        }
+
+    def _get_connection(self):
+        """Get database connection with error handling."""
         try:
-            load_dotenv()
-            openai_api_key = os.getenv("OPENAI_API_KEY")
-            if not openai_api_key:
-                raise ValueError("OPENAI_API_KEY not found in .env file.")
-            os.environ["OPENAI_API_KEY"] = openai_api_key
-
-            Settings.llm = OpenAI(
-                model="gpt-3.5-turbo",
-                temperature=0.3,
-                max_tokens=512,
-            )
-            self.embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
-
-            self.db_params = {
-                'dbname': os.getenv("PG_DATABASE"),
-                'user': os.getenv("PG_USER"),
-                'password': os.getenv("PG_PASSWORD"),
-                'host': os.getenv("PG_HOST", "127.0.0.1"),
-                'port': int(os.getenv("PG_PORT", 5432))
-            }
-
-            self.last_candidates = []
-            self.last_candidate = None
-
-            self._test_db_connection()
-            self.agent = self._initialize_react_agent()
-            print("ResumeRetrievalTool initialized successfully.")
+            return psycopg2.connect(**self.connection_params)
         except Exception as e:
-            print(f"Error initializing ResumeRetrievalTool: {e}")
+            print(f"Database connection error: {e}")
             raise
 
-    def _test_db_connection(self):
-        """Test the database connection."""
-        try:
-            conn = self._get_db_connection()
-            conn.close()
-            print("Database connection test successful.")
-        except Exception as e:
-            print(f"Database connection test failed: {e}")
-            raise
-
-    def _get_db_connection(self):
-        """Establish database connection."""
-        try:
-            return psycopg2.connect(**self.db_params)
-        except Exception as e:
-            print(f"Error connecting to database: {e}")
-            raise
-
-    def _initialize_react_agent(self):
-        """Initialize the ReAct agent with retrieval tools."""
-        try:
-            retrieve_candidates_tool = FunctionTool.from_defaults(
-                fn=self.retrieve_candidates,
-                name="retrieve_candidates",
-                description="Retrieve the most relevant candidates from the vector database based on a query using vector similarity. Args: query (str): the search query, top_k (int, optional): number of candidates to return, default 1."
-            )
-            retrieve_all_candidates_tool = FunctionTool.from_defaults(
-                fn=self.retrieve_all_candidates,
-                name="retrieve_all_candidates",
-                description="Retrieve all candidates from the database without filtering. Use when the query asks for all candidates. No arguments."
-            )
-            tools = [retrieve_candidates_tool, retrieve_all_candidates_tool]
-            tool_desc = "\n\n".join([f"{tool.metadata.name}: {tool.metadata.description}" for tool in tools])
-            system_prompt = CUSTOM_REACT_PROMPT.format(tool_desc=tool_desc)
-            return ReActAgent(
-                llm=Settings.llm,
-                tools=tools,
-                verbose=True,
-                system_prompt=system_prompt
-            )
-        except Exception as e:
-            print(f"Error initializing ReAct agent: {e}")
-            raise
-
-    def retrieve_candidates(self, query: str, top_k: int = 1) -> List[Dict[str, Any]]:
-        """Retrieve the most relevant candidates based on query using vector similarity."""
+    def vector_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Perform vector similarity search."""
         try:
             query_embedding = self.embed_model.get_text_embedding(query)
-            conn = self._get_db_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT
-                    candidate_id,
-                    name,
-                    profession,
-                    years_experience,
-                    content,
-                    (embedding <=> %s::vector) as similarity_score
-                FROM resumes
-                ORDER BY embedding <=> %s::vector
-                LIMIT %s;
-            """, (query_embedding, query_embedding, top_k))
-            results = cur.fetchall()
-            candidates = []
-            for row in results:
-                candidate = {
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            candidate_id,
+                            name,
+                            profession,
+                            years_experience,
+                            content,
+                            (embedding <=> %s::vector) as similarity_score
+                        FROM resumes
+                        ORDER BY similarity_score ASC
+                        LIMIT %s;
+                    """, (query_embedding, limit))
+                    results = cur.fetchall()
+            return [
+                {
                     'candidate_id': row[0],
                     'name': row[1],
                     'profession': row[2],
@@ -138,191 +82,208 @@ class ResumeRetrievalTool:
                     'content': row[4],
                     'similarity_score': float(row[5])
                 }
-                candidates.append(candidate)
-            self.last_candidates = candidates
-            if candidates:
-                self.last_candidate = candidates[0]
-            cur.close()
-            conn.close()
-            print(f"Retrieved {len(candidates)} candidates for query: {query}")
-            return candidates
+                for row in results
+            ]
         except Exception as e:
-            print(f"Error retrieving candidates: {e}")
+            print(f"Vector search error: {e}")
             return []
 
-    def retrieve_all_candidates(self) -> List[Dict[str, Any]]:
-        """Retrieve all candidates from the database."""
+    def get_all_candidates(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get all candidates with basic info."""
         try:
-            conn = self._get_db_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT
-                    candidate_id,
-                    name,
-                    profession,
-                    years_experience,
-                    content,
-                    0 as similarity_score
-                FROM resumes;
-            """)
-            results = cur.fetchall()
-            candidates = []
-            for row in results:
-                candidate = {
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT candidate_id, name, profession, years_experience, content
+                        FROM resumes
+                        ORDER BY name
+                        LIMIT %s
+                    """, (limit,))
+                    results = cur.fetchall()
+            return [
+                {
                     'candidate_id': row[0],
                     'name': row[1],
                     'profession': row[2],
                     'years_experience': row[3],
-                    'content': row[4],
-                    'similarity_score': float(row[5])
+                    'content': row[4]
                 }
-                candidates.append(candidate)
-            self.last_candidates = candidates
-            if candidates:
-                self.last_candidate = candidates[0]
-            cur.close()
-            conn.close()
-            print(f"Retrieved {len(candidates)} candidates (all candidates).")
-            return candidates
+                for row in results
+            ]
         except Exception as e:
-            print(f"Error retrieving all candidates: {e}")
+            print(f"Error getting all candidates: {e}")
             return []
 
-    def generate_concise_response(self, candidate: Dict[str, Any], question: str) -> str:
-        """Generate a concise response (2-3 sentences) for a candidate based on the query."""
+    def get_candidate_by_position(self, position: int) -> Optional[Dict[str, Any]]:
+        """Get candidate by position (1-indexed)."""
         try:
-            prompt = f"""
-            Provide a concise response (2-3 sentences, max 60 words) answering the question about the candidate.
-            Focus on key information relevant to the question, including their name, profession, experience, and core strengths.
-            Question: {question}
-            Candidate: {candidate['name']}
-            Profession: {candidate['profession']}
-            Years of Experience: {candidate['years_experience']}
-            Resume Content: {candidate['content'][:1500]}
-            Response:
-            """
-            response = Settings.llm.complete(prompt)
-            answer = response.text.strip()
-            sentences = [s.strip() for s in answer.split('.') if s.strip()]
-            if len(sentences) > 3:
-                answer = '. '.join(sentences[:3]).strip() + '.'
-            elif len(sentences) < 2:
-                answer += ' They excel in their field.'
-            return answer if answer.endswith('.') else answer + '.'
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT candidate_id, name, profession, years_experience, content
+                        FROM resumes
+                        ORDER BY name
+                        LIMIT 1 OFFSET %s
+                    """, (position - 1,))
+                    result = cur.fetchone()
+            if result:
+                return {
+                    'candidate_id': result[0],
+                    'name': result[1],
+                    'profession': result[2],
+                    'years_experience': result[3],
+                    'content': result[4]
+                }
+            return None
         except Exception as e:
-            print(f"Error generating response: {e}")
-            return f"Error generating response: {str(e)}"
+            print(f"Error getting candidate by position: {e}")
+            return None
 
-    def process_query(self, query: str) -> str:
-        """Process a general user query to find relevant candidates and generate a response."""
+    def get_most_experienced(self, limit: int = 1) -> List[Dict[str, Any]]:
+        """Get candidates with most experience."""
         try:
-            # Handle "all candidates" queries
-            if any(phrase in query.lower() for phrase in ["all candidates", "list all candidates"]):
-                candidates = self.retrieve_all_candidates()
-                if not candidates:
-                    return f"""
-💬 Your question: {query}
-🤔 Processing...
-🤖 Agent Response: No candidates found in the database.
-"""
-                responses = []
-                for i, candidate in enumerate(candidates, 1):
-                    response = self.generate_concise_response(candidate, query)
-                    responses.append(f"{i}. {response}")
-                return f"""
-💬 Your question: {query}
-🤔 Processing...
-🤖 Agent Response:
-{'\n'.join(responses)}
-"""
-            # Handle "first candidate" queries
-            if "first candidate" in query.lower() and self.last_candidate:
-                response = self.generate_concise_response(self.last_candidate, query)
-                return f"""
-💬 Your question: {query}
-🤔 Processing...
-🤖 Agent Response: {response}
-"""
-            # Handle "second candidate," "third candidate," etc.
-            import re
-            match = re.match(r".*(second|third|\d+(?:st|nd|rd|th))\s+candidate", query.lower())
-            if match and self.last_candidates:
-                ordinal = match.group(1)
-                ordinal_map = {'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5}
-                if ordinal in ordinal_map:
-                    index = ordinal_map[ordinal] - 1
-                else:
-                    try:
-                        index = int(re.search(r'\d+', ordinal).group()) - 1
-                    except:
-                        index = -1
-                if 0 <= index < len(self.last_candidates):
-                    response = self.generate_concise_response(self.last_candidates[index], query)
-                    return f"""
-💬 Your question: {query}
-🤔 Processing...
-🤖 Agent Response: {response}
-"""
-                else:
-                    return f"""
-💬 Your question: {query}
-🤔 Processing...
-🤖 Agent Response: No candidate found at position {ordinal}.
-"""
-            # Fallback to ReAct agent
-            print(f"Processing query with ReAct agent: {query}")
-            try:
-                # Try synchronous run first
-                agent_response = self.agent.run(query)
-                return f"""
-💬 Your question: {query}
-🤔 Processing...
-🤖 Agent Response: {agent_response.response}
-"""
-            except RuntimeError as e:
-                if "no running event loop" in str(e).lower():
-                    # Fallback to async run
-                    try:
-                        async def run_agent():
-                            return await self.agent.run(query)
-                        agent_response = asyncio.run(run_agent())
-                        return f"""
-💬 Your question: {query}
-🤔 Processing...
-🤖 Agent Response: {agent_response.response}
-"""
-                    except Exception as async_e:
-                        raise Exception(f"Async run failed: {str(async_e)}")
-                else:
-                    raise e
-            except AttributeError:
-                raise AttributeError("ReActAgent does not support 'run'. Please check available methods: {}".format(dir(self.agent)))
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT candidate_id, name, profession, years_experience, content
+                        FROM resumes
+                        ORDER BY years_experience DESC
+                        LIMIT %s
+                    """, (limit,))
+                    results = cur.fetchall()
+            return [
+                {
+                    'candidate_id': row[0],
+                    'name': row[1],
+                    'profession': row[2],
+                    'years_experience': row[3],
+                    'content': row[4]
+                }
+                for row in results
+            ]
         except Exception as e:
-            print(f"Error processing query: {e}")
-            return f"""
-💬 Your question: {query}
-🤔 Processing...
-🤖 Agent Response: Error processing query: {str(e)}
+            print(f"Error getting most experienced: {e}")
+            return []
+
+# Initialize components
+retrieval_tool = ResumeRetrievalTool()
+
+# Create individual tools for ReAct agent
+vector_search_tool = FunctionTool.from_defaults(
+    fn=retrieval_tool.vector_search,
+    name="vector_search",
+    description="""
+    Perform semantic similarity search on resumes using vector embeddings.
+    Input: query (str) - the search query, limit (int, default=5) - number of results.
+    Output: List of dictionaries with candidate details including name, profession, years_experience, content, and similarity_score.
+    Use this for queries about specific skills, experiences, or professions.
+    """
+)
+
+get_all_candidates_tool = FunctionTool.from_defaults(
+    fn=retrieval_tool.get_all_candidates,
+    name="get_all_candidates",
+    description="""
+    Retrieve a list of all candidates sorted by name.
+    Input: limit (int, default=20) - maximum number of candidates to return.
+    Output: List of dictionaries with candidate details including name, profession, years_experience, content.
+    Use this when the user asks to see all candidates.
+    """
+)
+
+get_candidate_by_position_tool = FunctionTool.from_defaults(
+    fn=retrieval_tool.get_candidate_by_position,
+    name="get_candidate_by_position",
+    description="""
+    Get a specific candidate by their position (1-indexed) when sorted alphabetically by name.
+    Input: position (int) - the position number.
+    Output: Dictionary with candidate details or None if not found.
+    Use this for queries like 'show me the first candidate' or 'fifth candidate'.
+    """
+)
+
+get_most_experienced_tool = FunctionTool.from_defaults(
+    fn=retrieval_tool.get_most_experienced,
+    name="get_most_experienced",
+    description="""
+    Get the top candidates with the most years of experience.
+    Input: limit (int, default=1) - number of top candidates to return.
+    Output: List of dictionaries with candidate details.
+    Use this for queries about the most experienced candidates.
+    """
+)
+
+# Custom context for the ReAct agent to ensure accurate data retrieval
+agent_context = """
+You are a helpful assistant for analyzing resumes stored in a PostgreSQL database.
+Your goal is to answer user queries about candidates accurately by always using the provided tools to retrieve data from the database.
+Do not make up, assume, or hallucinate any candidate information—base your responses solely on the data retrieved from the tools.
+If a query requires data retrieval, select and use the most appropriate tool (vector_search, get_all_candidates, get_candidate_by_position, get_most_experienced).
+If no tool applies or if a tool call fails, inform the user that you cannot retrieve the information and suggest rephrasing the query.
+For general conversational queries not requiring database access, respond naturally and concisely.
+Summarize and present the retrieved data in a clear, concise, and natural way.
+Tool names are case-sensitive and must be used exactly as defined.
+Ensure the tool returns concise summaries or key information from the retrieved data. 
+When presenting candidate data, format it clearly concise with name, profession, years of experience, and a brief summary of their content.
+For multiple candidates, number each candidate and provide a brief summary for each.
 """
+
+# Create ReAct agent with the tools and custom context
+agent = ReActAgent.from_tools(
+    tools=[
+        vector_search_tool,
+        get_all_candidates_tool,
+        get_candidate_by_position_tool,
+        get_most_experienced_tool
+    ],
+    llm=Settings.llm,
+    verbose=False,  # Disable verbose output to hide thought process
+    max_iterations=15,
+    context=agent_context
+)
+
+def intelligent_candidate_query(query: str) -> str:
+    """
+    Main integration function that uses the ReAct agent to answer queries based on PostgreSQL data.
+    Returns only the final answer, suppressing intermediate thought logs.
+    """
+    try:
+        response = agent.chat(query)
+        return str(response.response)
+    except Exception as e:
+        return f"I encountered an error while processing your query: {str(e)}. Please try again or rephrase your question."
 
 def main():
-    """Interactive tool to query candidates with a general question."""
-    try:
-        print("Welcome to the Resume Retrieval Tool!")
-        retrieval_tool = ResumeRetrievalTool()
-        while True:
-            print("\nWhat would you like to know about the candidate(s)?")
-            user_question = input("Question: ").strip()
-            if user_question.lower() in ['quit', 'exit', 'q']:
-                print("Exiting the tool. Goodbye!")
+    """Main interactive loop with intelligent answer generation."""
+    print("🧠 Intelligent Resume Analysis System")
+    print("=" * 45)
+    print("Ask questions and get smart answers based on your PostgreSQL resume database!")
+    print("\nExamples:")
+    print("- 'Who is the most experienced candidate?'")
+    print("- 'Show me the third candidate'")
+    print("- 'Find me a candidate with design experience'")
+    print("- 'Do you have any senior developers?'")
+    print("- 'Tell me about candidates with administration experience'")
+    print("\nType 'quit' to exit.\n")
+    while True:
+        try:
+            user_query = input("🤔 Your question: ").strip()
+            if user_query.lower() in ['quit', 'exit', 'q']:
+                print("👋 Goodbye!")
                 break
-            if not user_question:
-                print("Please enter a valid question.")
+            if not user_query:
+                print("Please ask a question about the candidates.")
                 continue
-            output = retrieval_tool.process_query(user_question)
-            print(output)
-    except Exception as e:
-        print(f"Error running main: {e}")
+            print("\n🤖 Analyzing candidates...")
+            response = intelligent_candidate_query(user_query)
+            print(f"\n💡 Answer:\n{response}\n")
+            print("-" * 50)
+        except KeyboardInterrupt:
+            print("\n👋 Goodbye!")
+            break
+        except Exception as e:
+            print(f"❌ System Error: {e}")
+            print("Please try again.")
 
 if __name__ == "__main__":
     main()
