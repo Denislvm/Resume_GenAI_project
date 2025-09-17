@@ -51,11 +51,11 @@ the result should be: The repository contains a straightforward web app that lis
 #### 1. Storing Embeddings in a Vector Database: ChromaDB
 #### 2. To extract candidates from a CSV file, run the process_data.py file.
     
-    python process_data.py
+    python resume_project/process_data.py
 
 ![image info](pict/1.1.png)
 #### 3. If you want to generate summaries of selected candidates, run the generate_summaries.py file.
-    python generate_summaries.py
+    python resume_project/generate_summaries.py
 ![image info](pict/1.2.png)
 #### 4. To see that the repository contains a web application listing candidates - run:
 ```
@@ -86,7 +86,12 @@ b. incorporate all developed tools into the agent's toolkit, allowing it to fetc
 python resume_project/store_to_pgvector.py
 python resume_project/retrievaltool_pgvector.py
 ```
-![image info](pict/2.1.png)
+![image info](pict/2.1.1.png)
+![image info](pict/2.1.2.png)
+![image info](pict/2.1.3.png)
+![image info](pict/2.1.4.png)
+![image info](pict/2.1.5.png)
+![image info](pict/2.1.6.png)
 #### general knowledge tool: allows the agent to answer general questions unrelated to the resumes, enabling broader conversations. Need to run:
 ```
 python resume_project/additional_tool.py
