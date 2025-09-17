@@ -1,6 +1,7 @@
+vector_store/
 test.py
 .env
-Pipfile
-Pipfile.lock
 resume_project/toolretrieval_vstore.py
-test_structure_proj
+candidates.json
+full_texts.json
+summaries.json

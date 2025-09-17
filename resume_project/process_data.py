@@ -26,7 +26,7 @@ if not openai_api_key:
 os.environ["OPENAI_API_KEY"] = openai_api_key
 
 Settings.llm = OpenAI(
-    model="gpt-3.5-turbo",
+    model="gpt-4o-mini",
     temperature=0.1,
     max_tokens=256,  # Increased for better extraction
 )
@@ -214,7 +214,7 @@ def extract_years_experience(text):
 # Load Resume.csv
 csv_path = "Resume.csv"
 df = pd.read_csv(csv_path)
-df = df.sample(n=5, random_state=100)  # 5 random resumes
+df = df.sample(n=5, random_state=80)  # 5 random resumes
 
 documents = []
 for idx, row in df.iterrows():
