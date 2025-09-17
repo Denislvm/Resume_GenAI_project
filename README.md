@@ -25,7 +25,9 @@
     pipenv shell
 2. Install dependencies
     ```bash
-    pip install -r req.txt
+    pip install --no-cache-dir --upgrade pip
+    
+    pip install --no-cache-dir -r req.txt --no-deps
 3. Set up environment variables:
 Create a .env file in the root folder and add
     ```bash
